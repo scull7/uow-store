@@ -1,4 +1,5 @@
 crypto          = require 'crypto'
+bluebird        = require 'bluebird'
 MemoryDriver    = require '../../lib/driver-memory.js'
 Store           = require '../../lib/store.js'
 TaskLock        = require 'uow-lock'
@@ -10,16 +11,29 @@ describe 'Store', ->
 
   before ->
     driver  = new MemoryDriver()
-    store   = new Store(driver)
+    store   = new Store({
+      driver        : driver
+    })
+
+  it 'should throw a TypeError if a driver is not supplied', ->
+
+    test = -> new Store()
+
+    expect(test).to.throw TypeError, /DriverNotPresent/
 
   describe '::handleReadyTask', ->
+    eStore  = null
+
+    beforeEach ->
+      eDriver = new MemoryDriver()
+      eStore  = new Store({ driver  : driver })
 
     it 'should emit a ready event', (done) ->
       task    =
-        name  : 'i-am-ready'
+        name    : 'i-am-ready'
+        status  : 'ready'
 
-      store.on 'ready', (ready_task) ->
-        console.log 'READY!'
+      eStore.on 'ready', (ready_task) ->
         expect(ready_task.name).to.eql 'i-am-ready'
         expect(ready_task.id).to.eql task.id
 
@@ -27,7 +41,81 @@ describe 'Store', ->
 
       store.createTask task
 
-      .then (task) -> store.handleReadyTask(task.id)
+      .then (task) -> eStore.handleReadyTask(task.id)
+
+    it 'should not emit an event for a locked task', (done) ->
+
+      eStore.on 'ready', (ready_task) ->
+        expect(ready_task.name).to.eql 'i-am-ready'
+
+        setTimeout done, 10
+
+      task    =
+        name    : 'i-am-ready'
+        status  : 'ready'
+
+      locked  =
+        name    : 'i-am-locked'
+        status  : 'ready'
+
+      p1  = eStore.createTask locked
+          .then (task) -> eStore.lockTask('my-worker-id', task.id)
+      p2  = eStore.createTask task
+
+      bluebird.join p1, p2
+
+      .spread (lockedTask, readyTask) ->
+        eStore.handleReadyTask(lockedTask.id)
+        eStore.handleReadyTask(readyTask.id)
+
+    it 'should not emit an event for a delayed task', (done) ->
+
+      eStore.on 'ready', (ready_task) ->
+        expect(ready_task.name).to.eql 'i-am-ready'
+        setTimeout done, 10
+
+      task    =
+        name    : 'i-am-ready'
+        status  : 'ready'
+
+      delayed =
+        name    : 'i-am-delayed'
+        status  : 'ready'
+        after   : new Date().getTime()
+        delay   : 1000
+
+      p1  = eStore.createTask delayed
+      p2  = eStore.createTask task
+
+      bluebird.join p1, p2
+
+      .spread (delayedTask, readyTask) ->
+        eStore.handleReadyTask(delayedTask.id)
+        eStore.handleReadyTask(readyTask.id)
+
+    it 'should not emit an event for a future task', (done) ->
+
+      eStore.on 'ready', (ready_task) ->
+        expect(ready_task.name).to.eql 'i-am-ready'
+        setTimeout done, 10
+
+      task    =
+        name    : 'i-am-ready'
+        status  : 'ready'
+
+      future =
+        name    : 'i-am-future'
+        status  : 'ready'
+        after   : new Date().getTime() + 10000
+
+      p1  = eStore.createTask future
+      p2  = eStore.createTask task
+
+      bluebird.join p1, p2
+
+      .spread (futureTask, readyTask) ->
+        eStore.handleReadyTask(futureTask.id)
+        eStore.handleReadyTask(readyTask.id)
 
   describe '::createTask', ->
 
