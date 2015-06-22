@@ -36,6 +36,7 @@
   },
   "dependencies": {
     "bluebird": "^2.9.30",
+    "ramda": "^0.15.1",
     "uow-lock": "0.0.1",
     "uuid": "^2.0.1"
   }

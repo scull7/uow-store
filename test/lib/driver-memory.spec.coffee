@@ -1,10 +1,110 @@
-
+bluebird            = require 'bluebird'
 MemoryDriver        = require '../../lib/driver-memory.js'
+TaskLock            = require 'uow-lock'
 
 describe 'Memory Driver', ->
   driver  = null
 
   before -> driver = new MemoryDriver()
+
+  describe '::findReady', ->
+
+    beforeEach ->
+      @clock       = sinon.useFakeTimers()
+      driver       = new MemoryDriver()
+
+      t1  = driver.create {
+        id      : 'ready-1'
+        name    : 'ready-task-one'
+        status  : 'ready'
+      }
+
+      t2  = driver.create {
+        id      : 'not-ready-1'
+        name    : 'not-ready-task-one'
+        status  : 'new'
+      }
+
+      t3  = driver.create {
+        id      : 'ready-2'
+        name    : 'ready-task-two'
+        status  : 'ready'
+      }
+
+      t4  = driver.create {
+        id      : 'not-ready-2'
+        name    : 'not-ready-task-two'
+        status  : 'new'
+      }
+
+      bluebird.join t1, t2, t3, t4
+
+    afterEach -> @clock.restore()
+
+    it 'should start the ready search if the option is set.', (done) ->
+      tick        = @clock.tick.bind(@)
+      initDriver  = new MemoryDriver({ runTaskSearch: true })
+
+      initDriver.on 'task::ready', (taskId) ->
+        expect(taskId).to.eql 'ready-on-start'
+        done()
+
+      t1  = initDriver.create {
+        id      : 'ready-on-start'
+        name    : 'ready-on-start'
+        status  : 'ready'
+      }
+
+      .then -> tick 501
+
+    it 'should emit ready events for all ready, unlocked tasks.', (done) ->
+      readyTasks  = []
+
+      driver.on 'task::ready', (taskId) ->
+        readyTasks.push taskId
+
+        if readyTasks.length >= 2
+          setTimeout ->
+            expect(readyTasks.length).to.eql 2
+            expect(readyTasks.indexOf('not-ready-1')).to.eql -1
+            expect(readyTasks.indexOf('not-ready-2')).to.eql -1
+            done()
+
+          , 5
+
+      driver.findReady()
+      @clock.tick(10)
+
+    it 'should call the task after the set delay if search is turned on',
+    (done) ->
+      driver.runTaskSearch  = true
+      driver.taskReadyDelay = 100
+      readyTasks            = []
+      tick                  = @clock.tick.bind(@)
+
+      driver.on 'task::ready', (taskId) ->
+        readyTasks.push taskId
+
+        if readyTasks.length >= 3
+          setTimeout ->
+            expect(readyTasks.length).to.eql 3
+            expect(readyTasks.indexOf('not-ready-1')).to.eql -1
+            expect(readyTasks.indexOf('not-ready-2')).to.eql -1
+            done()
+
+          , 5
+
+          tick 10
+
+      driver.findReady()
+      driver.getById 'ready-2'
+
+      .then (task) ->
+
+        task.status = 'success'
+        driver.update task
+
+      .then -> tick 101
 
   describe '::create', ->
 
