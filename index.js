@@ -12,6 +12,6 @@ Store.MemoryStore   = function() {
   var memoryDriver = new MemoryDriver();
 
   return new Store(memoryDriver);
-}
+};
 
 module.exports      = Store;
