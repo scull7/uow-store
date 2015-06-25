@@ -1,6 +1,6 @@
 {
   "name": "uow-store",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Storage mechanism for the unit-of-work queue.",
   "main": "index.js",
   "directories": {
